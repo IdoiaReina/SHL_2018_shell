@@ -1,0 +1,516 @@
+#!/bin/bash
+
+json='a'
+
+describe () {
+    local file
+    local to_find
+    local i=0
+    array=($(grep -o '".*"' $json))
+    len=${#array[@]}
+    for ((i=0 ; $i < $len ; i++))
+    do
+        if [ ${array[i]} = '"desc_'$1'"' ]
+        then
+            ((i++))
+            for (($i ; $i < $len ; i++))
+            do
+                if [ ${array[i]:1:5} = 'desc_' ] || [ ${array[i]:1:5} = 'data_' ]
+                then
+                    return
+                fi
+                echo ${array[i]:1:-1}
+            done
+        fi
+    done
+}
+
+selecte () {
+    local len_max=()
+    local sel=()
+    args=(${2//,/ })
+    len=${#args[@]}
+    for ((i=0; $i < $len; i++))
+    do
+        len_max+=(${#args[i]})
+    done
+    step=$(grep -o '".*"' $json)
+    step2=${step// /@}
+    array=(${step2//\":@/\" })
+    len2=${#array[@]}
+    for ((u=0; $u < $len; u++))
+    do
+        for ((i=0; $i < $len2; i++))
+        do
+            if [ ${array[i]} = '"data_'$1'"' ]
+            then
+                for (($i ; $i < $len2 ; i++))
+                do
+                    if [ ${array[i]} = ":" ]
+                    then
+                        ((i++))
+                    fi
+                    if [[ "${args[u]}" = "${array[i]:1:-1}" ]] && [ ! ${array[i]:1:-1} = "" ]
+                    then
+                        if [ ${array[i+1]} = ":" ]
+                        then
+                            ((i++))
+                        fi
+                        sel+=(${array[i+1]})
+                    fi
+                done
+            fi
+        done
+    done
+    len1=${#sel[@]}
+    div=$(($len1/$len))
+    for ((i=0; $i<$len; i++))
+    do
+        for ((u=0; $u<$div; u++))
+        do
+            cut=${sel[i*$div+u]:1:-1}
+            if (($((${len_max[i]})) < $((${#cut}))))
+            then
+                len_max[i]=${#cut}
+            fi
+        done
+    done
+    for ((i=0; $i < $len; i++))
+    do
+        len3=${#args[i]}
+        echo -n "${args[i]}"
+        ((i++))
+        if [ ! $i = $len ]
+        then
+            len3=$((${len_max[i-1]}-${len3}))
+            ((len3+=2))
+            for ((z=0; $z < $len3; z++))
+            do
+                echo -n " "
+            done
+            echo -n "| "
+        fi
+        ((i--))
+    done
+    echo ""
+    len4=0
+    for ((i=0; $i<$len; i++))
+    do
+        len4=$(($len4+${len_max[i]}+4))
+    done
+    ((len4-=5))
+    for ((z=-3; $z<$len4; z++))
+    do
+        echo -n "-"
+    done
+    echo ""
+    for ((i=0; $i<$div; i++))
+    do
+        for ((z=0; $z<$len; z++))
+        do
+            format=${sel[z*div+i]:1:-1}
+            echo -n ${format//@/ }
+            ((z++))
+            if [ ! $z = $len ]
+            then
+                len3=${#sel[(z-1)*div+i]}
+                ((len3-=2))
+                len3=$((${len_max[z-1]}-${len3}))
+                ((len3+=2))
+                for ((o=0; $o < $len3; o++))
+                do
+                    echo -n " "
+                done
+                echo -n "|"
+                if [ ! ${sel[z*div+i]} = '""' ] || [ ! $(($z+1)) = $len ]
+                then
+                    echo -n " "
+                fi
+            fi
+            ((z--))
+        done
+        echo ""
+    done
+}
+
+data_desc_line=0
+
+function create_desc_table () {
+    i=0
+    args=(${6//,/ })
+    line=${#args[@]}
+
+    sed -i "2i\  \"desc_$5\": [" $2
+    while [ $i != $line ]; do
+    newline=$i
+    ((newline+=3))
+    sed -i "$newline i\    \"${args[$i]}\"" $2
+    ((i++))
+    done
+
+    ((line--))
+    i=0
+    while [ $i != $line ]; do
+    newline=$i
+    ((newline+=3))
+    sed -i "$newline s/$/,/" $2
+    ((i++))
+    done
+
+    if [ $line == 0 ]
+    then
+        ((newline++))
+    else
+    ((newline+=2))
+    fi
+    sed -i "$newline i\  ]," $2
+    ((newline++))
+    ((data_desc_line+=newline))
+}
+
+function create_data_table () {
+    sed -i "$data_desc_line i\  \"data_$5\": [" $2
+    ((data_desc_line++))
+    sed -i "$data_desc_line i\  ]" $2
+}
+
+function create_other_desc_table () {
+    file=$(cat $2)
+    file_line=(${file// /#@})
+    ((j=0))
+    while [ "${file_line[j]:5:4}" != "data" ]; do
+    ((j++))
+    done
+    ((j++))
+    sed -i "$j i\  \"desc_$5\": [" $2
+    ((j++))
+
+    i=0
+    args=(${6//,/ })
+    line=${#args[@]}
+
+    while [ $i != $line ]; do
+    newline=$i
+    ((newline+=j))
+    sed -i "$newline i\    \"${args[$i]}\"" $2
+    ((i++))
+    done
+
+    ((line--))
+    i=0
+    while [ $i != $line ]; do
+    newline=$i
+    ((newline+=j))
+    sed -i "$newline s/$/,/" $2
+    ((i++))
+    done
+
+    if [ $line == 0 ]
+    then
+        ((newline++))
+    else
+    ((newline+=2))
+    fi
+    sed -i "$newline i\  ]," $2
+    ((newline++))
+    ((data_desc_line+=newline))
+}
+
+function create_other_data_table () {
+    file=$(cat $2)
+    file_line=(${file// /#@})
+    ((j=0))
+    while [ "${file_line[j]:0:1}" != "}" ]; do
+    ((j++))
+    done
+    sed -i "$j s/]/],/" $2
+    ((j++))
+    sed -i "$j i\  \"data_$5\": [" $2
+    ((j++))
+    sed -i "$j i\  ]" $2
+}
+
+function create_table () {
+    touch $2
+    file=$(cat $2)
+    if [ "${file:2:1}" == "}" ]
+    then
+    create_desc_table $1 $2 $3 $4 $5 $6
+    create_data_table $1 $2 $3 $4 $5 $6
+    else
+    create_other_desc_table $1 $2 $3 $4 $5 $6
+    create_other_data_table $1 $2 $3 $4 $5 $6
+    fi
+}
+
+function find_args () {
+    k=0
+    jj=$i
+    line=${#args[@]}
+    is_here=0
+    while [ "$k" -lt "$line" ]; do
+    this_arg="\"${args[$k]}\""
+    this_arg_coma="\"${args[$k]}\","
+        if [ "$this_arg" == "${file_line[$jj]}" ]
+        then
+            kk=$k
+            ((kk++))
+            this_arg_coma_value="\"${args[$kk]}\""
+            sed -i "$j i\      ${this_arg}: ${this_arg_coma_value}" $1
+            ((j++))
+            ((is_here++))
+            return
+        fi
+        if [ "$this_arg_coma" == "${file_line[$jj]}" ]
+        then
+            kk=$k
+            ((kk++))
+            this_arg_coma_value="\"${args[$kk]}\","
+            sed -i "$j i\      ${this_arg}: ${this_arg_coma_value}" $1
+            ((j++))
+            ((is_here++))
+            return
+        fi
+        ((k+=2))
+    done
+    if [ "$is_here" = 0 ]
+    then
+        len_no_arg=${#file_line[$jj]}
+        ((len_no_arg--))
+    if [ "${file_line[$jj]:$len_no_arg:1}" == "," ]
+    then
+        no_arg=${file_line[$jj]//,/}
+        sed -i "$j i\      ${no_arg}: \"\"," $1
+        ((j++))
+    else
+        no_arg=${file_line[$jj]//,/}
+        sed -i "$j i\      ${no_arg}: \"\"" $1
+        ((j++))
+    fi
+    fi
+}
+
+function inster_first_data () {
+    ((j++))
+    ((i++))
+    sed -i "$j i\    {" $1
+    ((j++))
+    while [ "${file_line[$i]:0:1}" != "]" ]; do
+        find_args $1 $file $file_line $i $j $args
+        ((i++))
+    done
+    sed -i "$j i\    }" $1
+}
+
+function inster_second_data () {
+    ((j++))
+    ((i++))
+    sed -i "$j s/}/},/" $1
+    ((j++))
+    sed -i "$j i\    {" $1
+    ((j++))
+    while [ "${file_line[$i]:0:1}" != "]" ]; do
+        find_args $1 $file $file_line $i $j $args
+        ((i++))
+    done
+    sed -i "$j i\    }" $1
+}
+
+function first_insert () {
+    file=$(cat $2)
+    file_line=(${file//: /:.})
+    i=0
+    args=(${5//[=,]/ })
+    line=${#args[@]}
+    len=${#4}
+    while [ "${4}" != "${file_line[$i]:6:$len}" ]; do
+        ((i++))
+    done
+    j=$i
+    ((j++))
+    while [ "${4}" != "${file_line[$j]:6:$len}" ]; do
+        ((j++))
+    done
+    ((j++))
+    if [ "${file_line[$j]:0:1}" == "]" ]
+    then
+        inster_first_data $2 $file $file_line $i $j $args
+    else
+        while [ "${file_line[$j]:0:1}" != "]" ]; do
+            ((j++))
+        done
+        ((j--))
+        inster_second_data $2 $file $file_line $i $j $args
+    fi
+}
+
+function instert () {
+    file=$(cat $2)
+    first_insert $@
+}
+
+error () {
+    if [ "$1" == "-h" ]
+        then
+        echo "Usage: ./bdsh [OPTION]... [COMMAND] [REQUEST]"
+        echo "OPTION:"
+        echo -e "   -h\t\t\t\tdisplay usage"
+        echo -e "   -f FILE\t\t\tjson database file"
+        echo -e "   -j\t\t\t\tjson formated output for select command"
+        return
+    fi
+    if [ -f .bdshrc ]
+    then
+        json='.bdshrc'
+    fi
+    if [ -f $BDSH_File ] && [ ! $BDSH_File = "" ]
+    then
+        json=$BDSH_File
+    fi
+    if [ "${json}" == "a" ]
+    then
+        if [ ! $1 = '-f' ]
+        then
+            >&2 echo "Syntax error in command line (bad arguments)"
+            return
+        fi
+        if [ $3 = "create" ] && [ $4 = "table" ]
+        then
+            json=$2
+        elif [ ! -f $2 ]
+        then
+            touch $2
+            #>&2 echo "File "$2" not found"
+        fi
+    fi
+    if [ $3 = "create" ] && [ $4 = "table" ]
+    then
+        json=$2
+    elif [ $1 = '-f' ] && [ -f $2 ]
+    then
+        json=$2
+    fi
+    if [ $3 = 'create' ]
+    then
+        if [ $4 = 'database' ] && [ -f $2 ]
+        then
+            file=$(cat $json)
+            if [ "${file[0]}" == "{" ]
+                then
+                >&2 echo "Database already exist when create database"
+                return
+            fi
+        fi
+        if [ $4 = "table" ]
+        then
+            if [ ! -f $json ]
+            then
+                >&2 echo "Can't create table (Database doesn't exist)"
+                return
+            fi
+            file5=$(cat $json)
+            if [ ! "${file5:0:1}" = "{" ]
+            then
+                >&2 echo "Can't create table (Database doesn't exist)"
+                return
+            fi
+            if (( $# < 6 ))
+            then
+                >&2 echo "Syntax error in command line (not enough arguments)"
+                return
+            fi
+            to_find=$(grep -o "desc_$5" $json)
+            if [ "${to_find}" != "" ]
+            then
+                >&2 echo "Table already exist when create table"
+                return
+            fi
+        fi
+        if [ $4 = "database" ]
+        then
+            touch $2
+            echo -e "{\n}" > $2
+        return
+        fi
+        if [ $4 = "table" ]
+        then
+            create_table $@
+        fi
+    fi
+    if [ $3 = "insert" ]
+    then
+        if (( $# < 5 ))
+        then
+            >&2 echo "Syntax error in command line (not enough arguments)"
+            return
+        fi
+        to_find=($(grep -o "desc_.*" $json))
+        if [[ ! "${to_find[@]%\"*}" =~ "desc_$4" ]]
+        then
+            >&2 echo "Table not found when insert"
+            return
+        fi
+        args=(${5//,/ })
+        array=($(grep -o '".*"' $json))
+        len=${#array[@]}
+        for ((i=0 ; $i < $len ; i++))
+        do
+            if [ ${array[i]} = '"desc_'$4'"' ]
+            then
+                ((i++))
+            fi
+        done
+        instert $@
+    fi
+    if [ $3 = "describe" ]
+    then
+        to_find3=($(grep -o 'desc_.*"' $json))
+        if [[ ! "${to_find3[@]%\"*}" =~ "desc_$4" ]]
+        then
+            >&2 echo "Table not found when describe"
+            return
+        fi
+        describe $4
+    fi
+    if [ $3 = "select" ]
+    then
+        if (( $# < 5 ))
+        then
+            >&2 echo "Syntax error in command line (not enough arguments)"
+            return
+        fi
+        to_find4=($(grep -o "desc_.*\"" $json))
+        if [[ ! "${to_find4[@]%\"*}" =~ "desc_$4" ]]
+        then
+            >&2 echo "Table not found when select"
+            return
+        fi
+        args1=(${5//,/ })
+        array1=($(grep -o '".*"' $json))
+        len1=${#array1[@]}
+        for ((i=0 ; $i < $len1 ; i++))
+        do
+            if [ ${array1[i]} = '"desc_'$4'"' ]
+            then
+                ((i++))
+                while [ ${array1[i]:1:5} != "desc_" ] && [ ${array1[i]:1:5} != 'data_' ]
+                do
+                    if [[ ! "${array1[@]%\"*}" =~ "${args1[i]}" ]]
+                    then
+                        >&2 echo "Fields not found when select"
+                        return
+                    fi
+                    ((i++))
+                done
+            fi
+        done
+        selecte $4 $5
+    fi
+    return
+}
+if [ $1 = "-f" ]
+then
+    error $@
+else
+    error "-f" ".bdshrc" $@
+fi
